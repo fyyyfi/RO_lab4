@@ -42,8 +42,8 @@ void ProcessInitialization(double *&pData, int& DataSize, double
     if(ProcRank == 0) {
         pData = new double[DataSize];
         // Data initalization
-        //RandomDataInitialization(pData, DataSize);
-        DummyDataInitialization(pData, DataSize);
+        RandomDataInitialization(pData, DataSize);
+        //DummyDataInitialization(pData, DataSize);
     }
 }
 
@@ -93,4 +93,134 @@ BlockSize) {
     // Free the memory
     delete [] pSendNum;
     delete [] pSendInd;
+}
+
+enum split_mode { KeepFirstHalf, KeepSecondHalf };
+
+// Parallel bubble sort algorithm
+void ParallelBubble(double *pProcData, int BlockSize) {
+    // Local sorting the process data
+    SerialBubbleSort(pProcData, BlockSize);
+    //SerialStdSort(pProcData, BlockSize);
+
+    int Offset;
+    split_mode SplitMode;
+
+    for(int i = 0; i < ProcNum; i++) {
+        if((i % 2) == 1) {
+            if((ProcRank % 2) == 1) {
+                Offset = 1;
+                SplitMode = KeepFirstHalf;
+            }
+            else {
+                Offset = -1;
+                SplitMode = KeepSecondHalf;
+            }
+        }
+        else {
+            if((ProcRank % 2) == 1) {
+                Offset = -1;
+                SplitMode = KeepSecondHalf;
+            }
+            else {
+                Offset = 1;
+                SplitMode = KeepFirstHalf;
+            }
+        }
+        
+        // Check the first and last processes
+        if((ProcRank == ProcNum - 1) && (Offset == 1)) continue;
+        if((ProcRank == 0 ) && (Offset == -1)) continue;
+
+        MPI_Status status;
+        int DualBlockSize;
+
+        MPI_Sendrecv(&BlockSize, 1, MPI_INT, ProcRank + Offset, 0,
+        &DualBlockSize, 1, MPI_INT, ProcRank + Offset, 0,
+        MPI_COMM_WORLD, &status);
+
+        double *pDualData = new double[DualBlockSize];
+        double *pMergedData = new double[BlockSize + DualBlockSize];
+
+        // Data exchange
+        ExchangeData(pProcData, BlockSize, ProcRank + Offset, pDualData,
+        DualBlockSize);
+
+        // Data merging
+        merge(pProcData, pProcData + BlockSize, pDualData, pDualData +
+        DualBlockSize, pMergedData);
+
+        // Data splitting
+        if(SplitMode == KeepFirstHalf)
+            copy(pMergedData, pMergedData + BlockSize, pProcData);
+        else
+            copy(pMergedData + BlockSize, pMergedData + BlockSize +
+        DualBlockSize, pProcData);
+        
+        delete []pDualData;
+        delete []pMergedData;
+    }
+}
+
+// Function for data exchange between the neighboring processes
+void ExchangeData(double *pProcData, int BlockSize, int DualRank,
+double *pDualData, int DualBlockSize) {
+    MPI_Status status;
+    MPI_Sendrecv(pProcData, BlockSize, MPI_DOUBLE, DualRank, 0,
+    pDualData, DualBlockSize, MPI_DOUBLE, DualRank, 0,
+    MPI_COMM_WORLD, &status);
+}
+
+// Function for testing the data distribution
+void TestDistribution(double *pData, int DataSize, double *pProcData, int
+BlockSize) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    
+    if (ProcRank == 0) {
+        printf("Initial data:\n");
+        PrintData(pData, DataSize);
+    }
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    
+    for (int i = 0; i < ProcNum; i++) {
+        if (ProcRank == i) {
+            printf("ProcRank = %d\n", ProcRank);
+            printf("Block:\n");
+            PrintData(pProcData, BlockSize);
+        }
+    
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
+}
+
+// Function for parallel data output
+void ParallelPrintData(double *pProcData, int BlockSize) {
+    // Print the sorted data
+    for(int i = 0; i < ProcNum; i++) {
+        if (ProcRank == i) {
+            printf("ProcRank = %d\n", ProcRank);
+            printf("Proc sorted data: \n");
+            PrintData(pProcData, BlockSize);
+        }
+
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
+}
+
+// Function for testing the result of parallel bubble sort
+void TestResult(double *pData, double *pSerialData, int DataSize) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    
+    if(ProcRank == 0) {
+        SerialBubbleSort(pSerialData, DataSize);
+        
+        //SerialStdSort(pSerialData, DataSize);
+        if(!CompareData(pData, pSerialData, DataSize))
+            printf("The results of serial and parallel algorithms are "
+            "NOT identical. Check your code\n");
+        else
+            printf("The results of serial and parallel algorithms are "
+            "identical\n");
+    }
 }
