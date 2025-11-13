@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
 
     start = clock();
     // Serial bubble sort
-    // SerialBubble(pData, DataSize);
+    //SerialBubble(pData, DataSize);
     // Sorting by the standard library algorithm
     SerialStdSort(pData, DataSize);
     finish = clock();
@@ -43,8 +43,25 @@ int main(int argc, char *argv[]) {
 }
 
 // Function for allocating the memory and setting the initial values
-void ProcessInitialization(double *&pData, int& DataSize) {
+void ProcessInitialization(double *&pData, int& DataSize)  {
+    do {
+        printf("Enter the size of data to be sorted: ");
+        scanf("%d", &DataSize);
+
+        if(DataSize <= 0)
+            printf("Data size should be greater than zero\n");
+    }
+    while(DataSize <= 0);
+        printf("Sorting %d data items\n", DataSize);
+
+        pData = new double[DataSize];
+
+        // Simple setting the data
+        // DummyDataInitialization(pData, DataSize);
+        // Setting the data by the random generator
+        RandomDataInitialization(pData, DataSize);
 }
+
 
 // Function for computational process termination
 void ProcessTermination(double *pData) {
