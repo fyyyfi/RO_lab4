@@ -14,6 +14,39 @@ const double RandomDataMultiplier = 1000.0;
 int ProcNum = 0; // Number of available processes
 int ProcRank = -1; // Rank of current process
 
+int main(int argc, char *argv[]) {
+    double *pData = 0;
+    int DataSize = 0;
+    time_t start, finish;
+    double duration = 0.0;
+
+    printf("Serial bubble sort program\n");
+
+    // Process initialization
+    ProcessInitialization(pData, DataSize);
+    // printf("Data before sorting\n");
+    // PrintData(pData, DataSize);
+
+    start = clock();
+    // Serial bubble sort
+    // SerialBubble(pData, DataSize);
+    // Sorting by the standard library algorithm
+    SerialStdSort(pData, DataSize);
+    finish = clock();
+
+    // printf("Data after sorting\n");
+    // PrintData(pData, DataSize);
+
+    duration = (finish - start) / double(CLOCKS_PER_SEC);
+    printf("Time of execution: %f\n", duration);
+
+    // Process termination
+    ProcessTermination(pData);
+
+    return 0;
+}
+
+
 // Function for allocating the memory and setting the initial values
 void ProcessInitialization(double *&pData, int& DataSize, double
 *&pProcData, int& BlockSize) {
