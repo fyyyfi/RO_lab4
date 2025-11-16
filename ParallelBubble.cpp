@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <mpi.h>
 
-#include "ParallelBubbleSort.h"
+#include "Parallel.h"
 
 using namespace std;
 
@@ -16,36 +16,59 @@ int ProcRank = -1; // Rank of current process
 
 int main(int argc, char *argv[]) {
     double *pData = 0;
+    double *pProcData = 0;
     int DataSize = 0;
-    time_t start, finish;
+    int BlockSize = 0;
+    double *pSerialData = 0;
+    double start, finish;
     double duration = 0.0;
 
-    printf("Serial bubble sort program\n");
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &ProcNum);
+    MPI_Comm_rank(MPI_COMM_WORLD, &ProcRank);
+
+    if(ProcRank == 0)
+        printf("Parallel bubble sort program\n");
 
     // Process initialization
-    ProcessInitialization(pData, DataSize);
-    // printf("Data before sorting\n");
-    // PrintData(pData, DataSize);
+    ProcessInitialization(pData, DataSize, pProcData, BlockSize);
 
-    start = clock();
-    // Serial bubble sort
-    // SerialBubble(pData, DataSize);
-    // Sorting by the standard library algorithm
-    SerialStdSort(pData, DataSize);
-    finish = clock();
+    if (ProcRank == 0) {
+        pSerialData = new double[DataSize];
+        CopyData(pData, DataSize, pSerialData);
+    }
 
-    // printf("Data after sorting\n");
-    // PrintData(pData, DataSize);
+    start = MPI_Wtime();
 
-    duration = (finish - start) / double(CLOCKS_PER_SEC);
-    printf("Time of execution: %f\n", duration);
+    // Distributing the initial data between processes
+    DataDistribution(pData, DataSize, pProcData, BlockSize);
+
+    // Parallel bubble sort
+    ParallelBubble(pProcData, BlockSize);
+
+    // Print the sorted data
+    // ParallelPrintData(pProcData, BlockSize);
+    
+    // Execution of data collection
+    DataCollection(pData, DataSize, pProcData, BlockSize);
+    
+
+    finish = MPI_Wtime();
+
+    duration = finish - start;
+
+    if(ProcRank == 0)
+        printf("Time of execution: %f\n", duration);
+
+    if (ProcRank == 0)
+        delete []pSerialData;
 
     // Process termination
-    ProcessTermination(pData);
+    ProcessTermination(pData, pProcData);
+    MPI_Finalize();
 
     return 0;
 }
-
 
 // Function for allocating the memory and setting the initial values
 void ProcessInitialization(double *&pData, int& DataSize, double
@@ -130,11 +153,31 @@ BlockSize) {
 
 enum split_mode { KeepFirstHalf, KeepSecondHalf };
 
+void DataCollection(double *pData, int DataSize, double *pProcData, int BlockSize) {
+    int *pReceiveNum = new int[ProcNum];
+    int *pReceiveInd = new int[ProcNum];
+    int RestData = DataSize;
+
+    pReceiveInd[0] = 0;
+    pReceiveNum[0] = DataSize / ProcNum;
+
+    for (int i = 1; i < ProcNum; i++) {
+        RestData -= pReceiveNum[i - 1];
+        pReceiveNum[i] = RestData / (ProcNum - i);
+        pReceiveInd[i] = pReceiveInd[i - 1] + pReceiveNum[i - 1];
+    }
+
+    MPI_Gatherv(pProcData, BlockSize, MPI_DOUBLE, pData, pReceiveNum, pReceiveInd, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    delete[] pReceiveNum;
+    delete[] pReceiveInd;
+}
+
 // Parallel bubble sort algorithm
 void ParallelBubble(double *pProcData, int BlockSize) {
     // Local sorting the process data
-    SerialBubbleSort(pProcData, BlockSize);
-    //SerialStdSort(pProcData, BlockSize);
+    //SerialBubbleSort(pProcData, BlockSize);
+    SerialStdSort(pProcData, BlockSize);
 
     int Offset;
     split_mode SplitMode;
@@ -202,6 +245,35 @@ double *pDualData, int DualBlockSize) {
     MPI_Sendrecv(pProcData, BlockSize, MPI_DOUBLE, DualRank, 0,
     pDualData, DualBlockSize, MPI_DOUBLE, DualRank, 0,
     MPI_COMM_WORLD, &status);
+}
+
+void CopyData(double *pData, int DataSize, double *pDataCopy) {
+    for (int i = 0; i < DataSize; i++)
+        pDataCopy[i] = pData[i];
+}
+
+bool CompareData(double *pData1, double *pData2, int DataSize) {
+    for (int i = 0; i < DataSize; i++)
+        if (pData1[i] != pData2[i])
+            return false;
+    return true;
+}
+
+void SerialBubbleSort(double *pData, int DataSize) {
+    for (int i = 0; i < DataSize - 1; i++)
+        for (int j = 0; j < DataSize - i - 1; j++)
+            if (pData[j] > pData[j + 1])
+                swap(pData[j], pData[j + 1]);
+}
+
+void SerialStdSort(double *pData, int DataSize) {
+    sort(pData, pData + DataSize);
+}
+
+void PrintData(double *pData, int DataSize) {
+    for (int i = 0; i < DataSize; i++)
+        printf("%f ", pData[i]);
+    printf("\n");
 }
 
 // Function for testing the data distribution
